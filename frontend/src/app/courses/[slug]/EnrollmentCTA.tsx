@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
 import type { Course } from '@/lib/data/courses';
-import { learningProgressService } from '@/lib/services';
+import { useProgress, useEnroll } from '@/lib/hooks/use-service';
 import { track } from '@/lib/analytics';
 
 interface Props {
@@ -13,23 +12,18 @@ interface Props {
 
 export function EnrollmentCTA({ course }: Props) {
   const { publicKey } = useWallet();
-  const [enrolled, setEnrolled] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { data: progress } = useProgress(course.id);
+  const { mutateAsync: enrollInCourse, isPending: loading } = useEnroll();
 
-  useEffect(() => {
-    if (!publicKey) { setEnrolled(false); return; }
-    learningProgressService.isEnrolled(publicKey.toBase58(), course.id).then(setEnrolled);
-  }, [publicKey, course.id]);
+  const enrolled = !!progress;
 
   const handleEnroll = async () => {
     if (!publicKey) return;
-    setLoading(true);
     try {
-      await learningProgressService.enroll(publicKey.toBase58(), course.id);
-      setEnrolled(true);
+      await enrollInCourse(course.id);
       track({ name: 'enroll', courseId: course.id, wallet: publicKey.toBase58() });
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      console.warn("Enrollment failed", e);
     }
   };
 

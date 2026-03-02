@@ -5,12 +5,28 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.min.css';
 
+import { useEffect, useState } from 'react';
+
 interface Props {
   content: string;
   className?: string;
 }
 
 export function LessonMarkdown({ content, className = '' }: Props) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div
+        className={`prose prose-invert prose-sm max-w-none text-[rgb(var(--text-muted))] ${className}`}
+      />
+    );
+  }
+
   return (
     <div
       className={`prose prose-invert prose-sm max-w-none text-[rgb(var(--text-muted))] ${className}`}

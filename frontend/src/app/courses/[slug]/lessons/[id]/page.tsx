@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { getLesson } from '@/lib/data/courses';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useState, useEffect } from 'react';
-import { learningProgressService } from '@/lib/services';
+import { useState } from 'react';
 import { track } from '@/lib/analytics';
 import { LessonResizableSplit } from '@/components/LessonResizableSplit';
 import { LessonMarkdown } from '@/components/LessonMarkdown';
+import { useProgress, useCompleteLesson } from '@/lib/hooks/use-service';
 
 /** Code challenge stub: objectives, test cases (pass/fail), hint/solution toggles. Replace with Monaco + run harness when connecting to backend. */
 function CodeEditorStub() {
@@ -130,7 +130,6 @@ export default function LessonPage() {
   const slug = params.slug as string;
   const id = params.id as string;
   const { publicKey } = useWallet();
-  const [completed, setCompleted] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -155,38 +154,24 @@ export default function LessonPage() {
     ? Math.max(1, Math.floor(course.xpReward / course.lessons.length))
     : 25;
 
-  useEffect(() => {
-    if (!publicKey) return;
-    const wallet = publicKey.toBase58();
-    fetch(`/api/progress?wallet=${encodeURIComponent(wallet)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const list = data.completedLessons?.[course.id] ?? [];
-        setCompleted(list.includes(lesson.id));
-      })
-      .catch(() => {});
-  }, [publicKey, course.id, lesson.id]);
+  const { data: progressData } = useProgress(course.id);
+  const { mutateAsync: completeLesson } = useCompleteLesson();
+
+  const completedCount = progressData?.completedCount ?? 0;
+  const completed = lessonIndex < completedCount;
 
   const markComplete = async () => {
     if (!publicKey) return;
     setCompleting(true);
     const wallet = publicKey.toBase58();
-    await fetch('/api/progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wallet,
-        courseId: course.id,
-        lessonId: lesson.id,
-      }),
-    });
-    await learningProgressService.completeLesson(wallet, course.id, lesson.id);
-    setCompleted(true);
-    setCompleting(false);
-    setShowSuccess(true);
-    track({ name: 'lesson_complete', courseId: course.id, lessonId: lesson.id, wallet });
-    const t = setTimeout(() => setShowSuccess(false), 3000);
-    return () => clearTimeout(t);
+    try {
+      await completeLesson({ courseId: course.id, lessonIndex });
+      setShowSuccess(true);
+      track({ name: 'lesson_complete', courseId: course.id, lessonId: lesson.id, wallet });
+      setTimeout(() => setShowSuccess(false), 3000);
+    } finally {
+      setCompleting(false);
+    }
   };
 
   return (

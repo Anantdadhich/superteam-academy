@@ -2,24 +2,16 @@
 
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useState, useEffect } from 'react';
-import { learningProgressService, xpToLevel } from '@/lib/services';
+import { useProfile } from '@/lib/hooks/use-service';
 
 export function XPBadge() {
   const { publicKey } = useWallet();
-  const [xp, setXp] = useState<number | null>(null);
+  const { data: profile } = useProfile();
 
-  useEffect(() => {
-    if (!publicKey) {
-      setXp(null);
-      return;
-    }
-    learningProgressService.getXPBalance(publicKey.toBase58()).then((b) => setXp(b.xp));
-  }, [publicKey]);
+  if (!publicKey || profile == null) return null;
 
-  if (!publicKey || xp === null) return null;
-
-  const level = xpToLevel(xp);
+  const xp = profile.xp;
+  const level = profile.level;
 
   return (
     <Link

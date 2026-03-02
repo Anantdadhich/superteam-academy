@@ -5,48 +5,21 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useState, useEffect } from 'react';
 import { courses } from '@/lib/data/courses';
 import { ACHIEVEMENT_DEFINITIONS } from '@/lib/data/achievements';
-import { learningProgressService, xpToLevel } from '@/lib/services/learning-progress';
-import { getStreakData } from '@/lib/services/streak';
 import { useI18n } from '@/lib/i18n/context';
 import { StreakCalendar } from '@/components/StreakCalendar';
-import type { XPBalance, Credential, StreakData, AchievementReceipt } from '@/lib/services/types';
+import { useProfile, useCredentials, useAllProgress, useAchievements, useStreak } from '@/lib/hooks/use-service';
 
 export function DashboardContent() {
   const { publicKey } = useWallet();
   const { t } = useI18n();
-  const [xpBalance, setXpBalance] = useState<XPBalance | null>(null);
-  const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [achievements, setAchievements] = useState<AchievementReceipt[]>([]);
-  const [streak, setStreak] = useState<StreakData | null>(null);
-  const [progress, setProgress] = useState<Record<string, string[]> | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!publicKey) {
-      setXpBalance(null);
-      setCredentials([]);
-      setAchievements([]);
-      setStreak(null);
-      setProgress(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const wallet = publicKey.toBase58();
-    Promise.all([
-      learningProgressService.getXPBalance(wallet),
-      learningProgressService.getCredentials(wallet),
-      learningProgressService.getProgress(wallet),
-      learningProgressService.getAchievements(wallet),
-    ]).then(([xp, creds, p, ach]) => {
-      setXpBalance(xp);
-      setCredentials(creds);
-      setProgress(p.completedLessons);
-      setAchievements(ach);
-      setLoading(false);
-    });
-    setStreak(getStreakData(wallet));
-  }, [publicKey]);
+  const { data: profile, isLoading: profileLoading } = useProfile();
+  const { data: credentials = [], isLoading: credsLoading } = useCredentials();
+  const { data: progressItems = [], isLoading: progressLoading } = useAllProgress();
+  const { data: achievements = [], isLoading: achLoading } = useAchievements();
+  const { data: streak, isLoading: streakLoading } = useStreak();
+
+  const loading = profileLoading || credsLoading || progressLoading || achLoading || streakLoading;
 
   if (!publicKey) {
     return (
@@ -104,12 +77,18 @@ export function DashboardContent() {
     );
   }
 
-  const completed = progress ?? {};
+  // Transform MVP `useAllProgress` array payload back to the Record type the UI expects
+  const completed = (progressItems as any[]).reduce((acc: Record<string, string[]>, curr: any) => {
+    acc[curr.courseId] = curr.completedLessonIds || [];
+    return acc;
+  }, {});
+
   const totalLessons = courses.reduce((s, c) => s + c.lessons.length, 0);
   const completedCount = Object.values(completed).flat().length;
   const overallPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
-  const xp = xpBalance?.xp ?? 0;
-  const level = xpBalance?.level ?? xpToLevel(0);
+
+  const xp = profile?.xp ?? 0;
+  const level = profile?.level ?? 1;
   const nextLevelXP = (level + 1) * (level + 1) * 100;
   const currentLevelStartXP = level * level * 100;
   const xpInCurrentLevel = xp - currentLevelStartXP;
@@ -175,10 +154,10 @@ export function DashboardContent() {
             Streak
           </p>
           <p className="text-display mt-1 font-semibold text-chart-3">
-            {streak?.currentStreak ?? 0} days
+            {streak?.current ?? 0} days
           </p>
           <p className="text-caption mt-1 text-[rgb(var(--text-subtle))]">
-            Longest: {streak?.longestStreak ?? 0} · Frontend-only
+            Longest: {streak?.longest ?? 0}
           </p>
         </div>
       </section>
@@ -199,20 +178,18 @@ export function DashboardContent() {
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {ACHIEVEMENT_DEFINITIONS.slice(0, 8).map((def) => {
-            const unlocked = achievements.some((a) => a.achievementId === def.id);
+            const unlocked = achievements.some((a: any) => a.id === def.id);
             return (
               <div
                 key={def.id}
-                className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
-                  unlocked
-                    ? 'border-border/50 bg-surface'
-                    : 'border-border/40 bg-surface/60 opacity-75'
-                }`}
+                className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${unlocked
+                  ? 'border-border/50 bg-surface'
+                  : 'border-border/40 bg-surface/60 opacity-75'
+                  }`}
               >
                 <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg ${
-                    unlocked ? 'bg-chart-3/20' : 'bg-surface-elevated'
-                  }`}
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg ${unlocked ? 'bg-chart-3/20' : 'bg-surface-elevated'
+                    }`}
                   aria-hidden
                 >
                   {unlocked ? '🏅' : '🔒'}
@@ -266,14 +243,14 @@ export function DashboardContent() {
         </h2>
         {credentials.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            {credentials.map((c) => (
+            {credentials.map((c: any) => (
               <div
-                key={c.mint}
+                key={c.mint || c.id}
                 className="rounded-xl border border-border/50 bg-surface p-5"
               >
-                <p className="text-body font-medium text-[rgb(var(--text))]">{c.track}</p>
+                <p className="text-body font-medium text-[rgb(var(--text))]">{c.track || "Credential"}</p>
                 <p className="text-caption text-[rgb(var(--text-muted))]">
-                  Level {c.level} · {c.coursesCompleted} courses · {c.totalXp} XP
+                  Level {c.level || 1} · {c.coursesCompleted || 0} courses · {c.totalXp || 0} XP
                 </p>
                 {c.verificationUrl && (
                   <a

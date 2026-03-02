@@ -9,6 +9,7 @@ import { SkipToContent } from '@/components/SkipToContent';
 import { DocumentLang } from '@/components/DocumentLang';
 import { ThemeProvider } from '@/lib/theme/context';
 import { SessionProvider } from '@/components/SessionProvider';
+import { QueryProvider } from '@/components/QueryProvider';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -47,20 +48,22 @@ export default function RootLayout({
         <meta name="theme-color" content="#f6f7fa" media="(prefers-color-scheme: light)" />
       </head>
       <body className="flex min-h-screen flex-col font-sans antialiased">
-        <WalletProvider>
-          <SessionProvider>
-            <I18nProvider>
-              <ThemeProvider>
-                <DocumentLang />
-                <div className="flex min-h-screen flex-col">
-                  <SkipToContent />
-                  {children}
-                  <Footer />
-                </div>
-              </ThemeProvider>
-            </I18nProvider>
-          </SessionProvider>
-        </WalletProvider>
+        <QueryProvider>
+          <WalletProvider>
+            <SessionProvider>
+              <I18nProvider>
+                <ThemeProvider>
+                  <DocumentLang />
+                  <div className="flex min-h-screen flex-col">
+                    <SkipToContent />
+                    {children}
+                    <Footer />
+                  </div>
+                </ThemeProvider>
+              </I18nProvider>
+            </SessionProvider>
+          </WalletProvider>
+        </QueryProvider>
       </body>
     </html>
   );

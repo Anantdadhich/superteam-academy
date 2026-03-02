@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Header } from '@/components/Header';
-import { learningProgressService, xpToLevel } from '@/lib/services';
-import type { LeaderboardEntry, LeaderboardTimeframe } from '@/lib/services/types';
+import { useLeaderboard, useProfile } from '@/lib/hooks/use-service';
+import type { LeaderboardTimeframe } from '@/lib/services/types';
 import { courses } from '@/lib/data/courses';
 
 const TIMEFRAMES: { value: LeaderboardTimeframe; label: string }[] = [
@@ -17,26 +17,17 @@ export default function LeaderboardPage() {
   const { publicKey } = useWallet();
   const [timeframe, setTimeframe] = useState<LeaderboardTimeframe>('all-time');
   const [courseId, setCourseId] = useState<string>('');
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [myXp, setMyXp] = useState<number | null>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    learningProgressService.getLeaderboard(timeframe, courseId || undefined).then((list) => {
-      setEntries(list);
-      setLoading(false);
-    });
-  }, [timeframe, courseId]);
+  const { data: entries = [], isLoading: entriesLoading } = useLeaderboard();
+  const { data: profile, isLoading: profileLoading } = useProfile();
 
-  useEffect(() => {
-    if (!publicKey) { setMyXp(null); return; }
-    learningProgressService.getXPBalance(publicKey.toBase58()).then((b) => setMyXp(b.xp));
-  }, [publicKey]);
+  const loading = entriesLoading || profileLoading;
+  const myXp = profile?.xp ?? null;
+  const myLevel = profile?.level ?? 1;
 
   const myRank = publicKey && entries.length ? (() => {
     const wallet = publicKey.toBase58();
-    const idx = entries.findIndex((e) => e.wallet === wallet);
+    const idx = entries.findIndex((e: any) => e.wallet === wallet);
     return idx >= 0 ? idx + 1 : null;
   })() : null;
 
@@ -53,19 +44,18 @@ export default function LeaderboardPage() {
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <div className="flex gap-2">
             {TIMEFRAMES.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTimeframe(value)}
-              className={`rounded-lg px-4 py-2 text-caption font-medium transition ${
-                timeframe === value
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTimeframe(value)}
+                className={`rounded-lg px-4 py-2 text-caption font-medium transition ${timeframe === value
                   ? 'bg-accent text-[rgb(3_7_18)]'
                   : 'border border-border bg-surface text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+                  }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <label htmlFor="leaderboard-course" className="sr-only">Filter by course</label>
           <select
@@ -84,7 +74,7 @@ export default function LeaderboardPage() {
         {publicKey && (myXp !== null || myRank !== null) && (
           <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
             <p className="text-caption font-medium text-[rgb(var(--text))]">
-              Your XP: {myXp ?? 0} · Level {myXp != null ? xpToLevel(myXp) : 0}
+              Your XP: {myXp ?? 0} · Level {myLevel}
               {myRank != null ? ` · Rank #${myRank}` : ''}
             </p>
           </div>
@@ -97,16 +87,15 @@ export default function LeaderboardPage() {
           </div>
         ) : (
           <ul className="mt-6 space-y-3">
-            {entries.map((u) => {
+            {entries.map((u: any) => {
               const isCurrentUser = publicKey && u.wallet === publicKey.toBase58();
               return (
                 <li
                   key={u.rank}
-                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
-                    isCurrentUser
-                      ? 'border-accent/60 bg-accent/10'
-                      : 'border-border/50 bg-surface'
-                  }`}
+                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${isCurrentUser
+                    ? 'border-accent/60 bg-accent/10'
+                    : 'border-border/50 bg-surface'
+                    }`}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-elevated text-caption font-medium text-[rgb(var(--text-muted))]" aria-hidden title={`Avatar for ${u.displayName ?? u.wallet}`}>
                     {(u.displayName ?? u.wallet).charAt(0).toUpperCase()}

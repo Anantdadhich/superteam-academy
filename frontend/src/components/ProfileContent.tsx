@@ -13,9 +13,8 @@ import {
   Legend,
   Tooltip,
 } from 'recharts';
-import { learningProgressService } from '@/lib/services';
+import { useAllProgress, useAchievements, useCredentials } from '@/lib/hooks/use-service';
 import { courses } from '@/lib/data/courses';
-import type { AchievementReceipt, Credential } from '@/lib/services/types';
 
 const SKILL_LABELS: Record<string, string> = {
   rust: 'Rust',
@@ -26,45 +25,38 @@ const SKILL_LABELS: Record<string, string> = {
 };
 
 /** Stub skill levels 0–100 derived from progress; production: from credentials or CMS */
-function useSkillRadarData(wallet: string | null) {
+function useSkillRadarData(progressItems: any[]) {
   const [data, setData] = useState<{ subject: string; value: number; fullMark: number }[]>([]);
   useEffect(() => {
-    if (!wallet) {
-      setData([]);
-      return;
-    }
-    learningProgressService.getProgress(wallet).then((p) => {
-      const completed = p.completedLessons ?? {};
-      const totalDone = Object.values(completed).flat().length;
-      const totalLessons = courses.reduce((s, c) => s + c.lessons.length, 0);
-      const base = totalLessons > 0 ? Math.min(100, Math.round((totalDone / totalLessons) * 100)) : 0;
-      setData(
-        Object.keys(SKILL_LABELS).map((key) => ({
-          subject: SKILL_LABELS[key],
-          value: Math.min(100, base + Math.floor(Math.random() * 20)),
-          fullMark: 100,
-        }))
-      );
-    });
-  }, [wallet]);
+    const completedCount = progressItems.reduce((acc, curr) => acc + (curr.completedLessonIds?.length || 0), 0);
+    const totalLessons = courses.reduce((s, c) => s + c.lessons.length, 0);
+    const base = totalLessons > 0 ? Math.min(100, Math.round((completedCount / totalLessons) * 100)) : 0;
+
+    setData(
+      Object.keys(SKILL_LABELS).map((key) => ({
+        subject: SKILL_LABELS[key],
+        value: Math.min(100, base + Math.floor(Math.random() * 20)),
+        fullMark: 100,
+      }))
+    );
+  }, [progressItems]);
   return data;
 }
 
 export function ProfileContent() {
   const { publicKey } = useWallet();
-  const [achievements, setAchievements] = useState<AchievementReceipt[]>([]);
-  const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [progress, setProgress] = useState<Record<string, string[]>>({});
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
-  const radarData = useSkillRadarData(publicKey?.toBase58() ?? null);
 
-  useEffect(() => {
-    if (!publicKey) return;
-    const wallet = publicKey.toBase58();
-    learningProgressService.getAchievements(wallet).then(setAchievements);
-    learningProgressService.getCredentials(wallet).then(setCredentials);
-    learningProgressService.getProgress(wallet).then((p) => setProgress(p.completedLessons ?? {}));
-  }, [publicKey]);
+  const { data: achievements = [] } = useAchievements();
+  const { data: credentials = [] } = useCredentials();
+  const { data: progressItems = [] } = useAllProgress();
+
+  const progress = (progressItems as any[]).reduce((acc: Record<string, string[]>, curr: any) => {
+    acc[curr.courseId] = curr.completedLessonIds || [];
+    return acc;
+  }, {});
+
+  const radarData = useSkillRadarData(progressItems as any[]);
 
   if (!publicKey) return null;
 
@@ -120,9 +112,9 @@ export function ProfileContent() {
         <h2 className="text-title mb-4 font-semibold text-[rgb(var(--text))]">Achievements</h2>
         {achievements.length > 0 ? (
           <div className="flex flex-wrap gap-3">
-            {achievements.map((a) => (
+            {achievements.map((a: any) => (
               <div
-                key={a.achievementId}
+                key={a.id}
                 className="flex items-center gap-3 rounded-xl border border-border/50 bg-surface px-4 py-3"
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-chart-3/20 text-lg" aria-hidden>🏅</span>
@@ -142,10 +134,10 @@ export function ProfileContent() {
         <h2 className="text-title mb-4 font-semibold text-[rgb(var(--text))]">On-chain credentials</h2>
         {credentials.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            {credentials.map((c) => (
-              <div key={c.mint} className="rounded-xl border border-border/50 bg-surface p-5">
-                <p className="text-body font-medium text-[rgb(var(--text))]">{c.track}</p>
-                <p className="text-caption text-[rgb(var(--text-muted))]">Level {c.level} · {c.totalXp} XP</p>
+            {credentials.map((c: any) => (
+              <div key={c.mint || c.id} className="rounded-xl border border-border/50 bg-surface p-5">
+                <p className="text-body font-medium text-[rgb(var(--text))]">{c.track || c.name || "Credential"}</p>
+                <p className="text-caption text-[rgb(var(--text-muted))]">Level {c.level || 1} · {c.totalXp || 0} XP</p>
                 {c.verificationUrl && (
                   <a href={c.verificationUrl} target="_blank" rel="noopener noreferrer" className="text-caption mt-2 inline-block text-accent hover:underline">
                     Verify →

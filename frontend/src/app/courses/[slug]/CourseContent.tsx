@@ -3,7 +3,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useState, useEffect, useRef } from 'react';
 import type { Course, Lesson } from '@/lib/data/courses';
-import { recordActivity } from '@/lib/services';
+import { useProgress, useCompleteLesson } from '@/lib/hooks/use-service';
 
 interface Props {
   course: Course;
@@ -13,8 +13,13 @@ const XP_PER_LESSON_FALLBACK = 25;
 
 export function CourseContent({ course }: Props) {
   const { publicKey } = useWallet();
-  const [completedIds, setCompletedIds] = useState<string[]>([]);
-  const [progressLoading, setProgressLoading] = useState(true);
+  const { data: progressData, isLoading: isProgressLoading } = useProgress(course.id);
+  const { mutateAsync: completeLesson } = useCompleteLesson();
+
+  const progressLoading = isProgressLoading;
+  const completedCount = progressData?.completedCount ?? 0;
+  const progress = Math.round(progressData?.percentComplete ?? 0);
+
   const [completingLessonId, setCompletingLessonId] = useState<string | null>(null);
   const [justCompletedId, setJustCompletedId] = useState<string | null>(null);
   const completedFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -24,51 +29,18 @@ export function CourseContent({ course }: Props) {
       ? Math.max(1, Math.floor(course.xpReward / course.lessons.length))
       : XP_PER_LESSON_FALLBACK;
 
-  useEffect(() => {
-    if (!publicKey) {
-      setCompletedIds([]);
-      setProgressLoading(false);
-      return;
-    }
-    setProgressLoading(true);
-    const wallet = publicKey.toBase58();
-    fetch(`/api/progress?wallet=${encodeURIComponent(wallet)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const list = data.completedLessons?.[course.id] ?? [];
-        setCompletedIds(list);
-      })
-      .catch(() => setCompletedIds([]))
-      .finally(() => setProgressLoading(false));
-  }, [publicKey, course.id]);
-
-  const markComplete = async (lessonId: string) => {
+  const markComplete = async (lessonId: string, lessonIndex: number) => {
     if (!publicKey) return;
     setCompletingLessonId(lessonId);
-    const wallet = publicKey.toBase58();
-    const res = await fetch('/api/progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet, courseId: course.id, lessonId }),
-    });
-    if (!res.ok) {
+    try {
+      await completeLesson({ courseId: course.id, lessonIndex });
+      setJustCompletedId(lessonId);
+      if (completedFeedbackTimeout.current) clearTimeout(completedFeedbackTimeout.current);
+      completedFeedbackTimeout.current = setTimeout(() => setJustCompletedId(null), 2500);
+    } finally {
       setCompletingLessonId(null);
-      return;
     }
-    recordActivity(wallet, 1);
-    setCompletedIds((prev) =>
-      prev.includes(lessonId) ? prev : [...prev, lessonId]
-    );
-    setCompletingLessonId(null);
-    setJustCompletedId(lessonId);
-    if (completedFeedbackTimeout.current) clearTimeout(completedFeedbackTimeout.current);
-    completedFeedbackTimeout.current = setTimeout(() => setJustCompletedId(null), 2500);
   };
-
-  const progress =
-    course.lessons.length > 0
-      ? Math.round((completedIds.length / course.lessons.length) * 100)
-      : 0;
 
   return (
     <div className="space-y-6">
@@ -118,12 +90,12 @@ export function CourseContent({ course }: Props) {
           </ul>
         ) : (
           <ul className="space-y-2">
-            {course.lessons.map((lesson) => (
+            {course.lessons.map((lesson, index) => (
               <LessonRow
                 key={lesson.id}
                 lesson={lesson}
-                completed={completedIds.includes(lesson.id)}
-                onComplete={() => markComplete(lesson.id)}
+                completed={index < completedCount}
+                onComplete={() => markComplete(lesson.id, index)}
                 walletConnected={!!publicKey}
                 isCompleting={completingLessonId === lesson.id}
                 justCompleted={justCompletedId === lesson.id}
@@ -175,11 +147,10 @@ function LessonRow({
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <span
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${
-              completed
-                ? 'border-success bg-success/15 text-success'
-                : 'border-border text-[rgb(var(--text-subtle))]'
-            }`}
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${completed
+              ? 'border-success bg-success/15 text-success'
+              : 'border-border text-[rgb(var(--text-subtle))]'
+              }`}
             aria-label={completed ? 'Completed' : 'Not completed'}
           >
             {completed ? '✓' : ''}
